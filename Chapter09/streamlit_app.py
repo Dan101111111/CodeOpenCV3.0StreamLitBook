@@ -59,6 +59,13 @@ def create_bovw_features(descriptors_list, k=50):
         # Concatenar todos los descriptores
         all_descriptors = np.vstack(descriptors_list)
         
+        # Ajustar k si es mayor que el número de muestras disponibles
+        n_samples = all_descriptors.shape[0]
+        original_k = k
+        if k > n_samples:
+            k = max(1, min(n_samples, 10))  # Usar máximo 10 clusters o el número de muestras
+            st.warning(f"⚠️ Ajustando número de clusters de {original_k} original a {k} debido a pocas muestras ({n_samples})")
+        
         # Aplicar K-means para crear vocabulario visual
         kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
         kmeans.fit(all_descriptors)
@@ -86,22 +93,41 @@ def create_bovw_features(descriptors_list, k=50):
         return None, None
 
 def load_example_images():
-    """Carga múltiples imágenes de ejemplo"""
+    """Carga múltiples imágenes de ejemplo con más características"""
     images = []
     
-    # Crear diferentes imágenes de ejemplo
-    for i in range(3):
-        img = np.ones((300, 400, 3), dtype=np.uint8) * (50 + i * 30)
+    # Crear diferentes imágenes de ejemplo con más detalles para generar más características SIFT
+    for i in range(5):  # Aumentamos a 5 imágenes
+        img = np.ones((400, 500, 3), dtype=np.uint8) * (30 + i * 20)
         
-        if i == 0:  # Imagen con círculos
-            cv2.circle(img, (100, 100), 40, (0, 255, 0), -1)
-            cv2.circle(img, (300, 200), 50, (255, 0, 0), -1)
-        elif i == 1:  # Imagen con rectángulos
+        if i == 0:  # Imagen con múltiples círculos
+            colors = [(0, 255, 0), (255, 0, 0), (0, 0, 255), (255, 255, 0)]
+            positions = [(80, 80), (300, 120), (150, 250), (400, 300)]
+            for pos, color in zip(positions, colors):
+                cv2.circle(img, pos, 25, color, -1)
+                cv2.circle(img, pos, 35, (255, 255, 255), 2)
+                
+        elif i == 1:  # Imagen con rectángulos y líneas
             cv2.rectangle(img, (50, 50), (150, 150), (0, 0, 255), -1)
             cv2.rectangle(img, (200, 180), (350, 280), (255, 255, 0), -1)
-        else:  # Imagen mixta
+            cv2.line(img, (0, 200), (500, 200), (255, 0, 255), 3)
+            cv2.line(img, (250, 0), (250, 400), (0, 255, 255), 3)
+            
+        elif i == 2:  # Imagen con formas mixtas
             cv2.circle(img, (150, 150), 60, (255, 0, 255), -1)
-            cv2.rectangle(img, (50, 200), (200, 300), (0, 255, 255), -1)
+            cv2.rectangle(img, (50, 250), (200, 350), (0, 255, 255), -1)
+            cv2.ellipse(img, (350, 200), (80, 40), 45, 0, 360, (255, 100, 100), -1)
+            
+        elif i == 3:  # Imagen con patrón de puntos
+            for x in range(50, 450, 60):
+                for y in range(50, 350, 60):
+                    color = (np.random.randint(100, 255), np.random.randint(100, 255), np.random.randint(100, 255))
+                    cv2.circle(img, (x, y), 15, color, -1)
+                    
+        else:  # Imagen con texto y formas
+            cv2.putText(img, "SIFT", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 3)
+            cv2.putText(img, "TEST", (250, 300), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 2)
+            cv2.rectangle(img, (300, 50), (480, 150), (255, 0, 0), 3)
         
         images.append(img)
     
@@ -118,7 +144,7 @@ if not use_multiple_images:
         ["🖼️ Imagen de ejemplo", "📤 Cargar imagen"]
     )
 
-k_clusters = st.sidebar.slider("Número de clusters (K)", 10, 100, 50)
+k_clusters = st.sidebar.slider("Número de clusters (K)", 5, 50, 20)
 
 # Cargar imágenes
 images = []
@@ -127,7 +153,7 @@ image_names = []
 if use_multiple_images:
     # Usar múltiples imágenes de ejemplo
     images = load_example_images()
-    image_names = ["ejemplo_1.jpg", "ejemplo_2.jpg", "ejemplo_3.jpg"]
+    image_names = ["círculos.jpg", "geometría.jpg", "formas.jpg", "puntos.jpg", "texto.jpg"]
     st.sidebar.success(f"✅ Usando {len(images)} imágenes de ejemplo")
 else:
     # Usar una sola imagen
@@ -173,6 +199,14 @@ if images:
                 results.append(result)
                 if result['descriptors'] is not None:
                     descriptors_list.append(result['descriptors'])
+        
+        # Verificar que tenemos suficientes características
+        if not descriptors_list:
+            st.error("❌ No se encontraron características SIFT en las imágenes.")
+            st.stop()
+        
+        total_descriptors = sum(len(desc) for desc in descriptors_list)
+        st.info(f"ℹ️ Total de descriptores SIFT encontrados: {total_descriptors}")
         
         with st.spinner("🔄 Creando Bag of Visual Words..."):
             kmeans_model, bovw_features = create_bovw_features(descriptors_list, k_clusters)
